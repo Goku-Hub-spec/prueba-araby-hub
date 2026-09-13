@@ -1,0 +1,1091 @@
+--// ARABE HUB (STABLE - NO CRASHES)
+--// WindUI - BlockSpin + Combat + Player Features
+--// FIXED: Removed all remote hooks causing Roblox crash
+
+local WindUI = loadstring(game:HttpGet(
+    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
+))()
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+--==================================================
+-- WINDOW
+--==================================================
+
+local Window = WindUI:CreateWindow({
+    Title = "Árabe Hub | BlockSpin",
+    Icon = "star",
+    Theme = "Dark",
+
+    Topbar = {
+        Height = 46,
+        ButtonsType = "Mac",
+    },
+
+    OpenButton = {
+        Enabled = false,
+    },
+})
+
+--==================================================
+-- FLOATING BUTTON
+--==================================================
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ArabeHubFloatingButton"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = CoreGui
+
+local FloatButton = Instance.new("ImageButton")
+FloatButton.Name = "OpenCloseButton"
+FloatButton.Size = UDim2.fromOffset(52, 52)
+FloatButton.Position = UDim2.new(0, 18, 0.5, -26)
+FloatButton.BackgroundColor3 = Color3.fromRGB(16, 16, 20)
+FloatButton.BackgroundTransparency = 0.05
+FloatButton.Image = "rbxassetid://132693337850412"
+FloatButton.ScaleType = Enum.ScaleType.Crop
+FloatButton.AutoButtonColor = false
+FloatButton.ZIndex = 100
+FloatButton.Parent = ScreenGui
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 15)
+Corner.Parent = FloatButton
+
+local Stroke = Instance.new("UIStroke")
+Stroke.Color = Color3.fromRGB(210, 35, 55)
+Stroke.Thickness = 2
+Stroke.Parent = FloatButton
+
+FloatButton.MouseButton1Click:Connect(function()
+    Window:Toggle()
+end)
+
+--==================================================
+-- DRAG
+--==================================================
+
+local dragging = false
+local dragStart
+local startPos
+
+FloatButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+
+        dragging = true
+        dragStart = input.Position
+        startPos = FloatButton.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if not dragging then
+        return
+    end
+
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+
+        local delta = input.Position - dragStart
+
+        FloatButton.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+--==================================================
+-- GENERAL
+--==================================================
+
+local GeneralTab = Window:Tab({
+    Title = "General",
+    Icon = "home",
+})
+
+GeneralTab:Section({
+    Title = "Arabe Hub",
+})
+
+GeneralTab:Paragraph({
+    Title = "BlockSpin Hub",
+    Desc = "Visual and performance advanced panel.",
+})
+
+GeneralTab:Section({
+    Title = "Info",
+})
+
+GeneralTab:Paragraph({
+    Title = "Features",
+    Desc = "FOV Rainbow • Distance • Player ESP • FPS Booster • No Recoil",
+})
+
+--==================================================
+-- GENERAL - SNAP & UTILITIES
+--==================================================
+
+GeneralTab:Section({
+    Title = "Optimization & Utilities",
+})
+
+local SnapActive = false
+local SnapConnection = nil
+local SnapDepth = 15
+local lockedY = nil
+
+GeneralTab:Toggle({
+    Title = "Enable Underground Snap",
+    Desc = "Advanced underground snap system.",
+    Value = false,
+
+    Callback = function(state)
+        SnapActive = state
+        if state then
+            lockedY = nil
+            if SnapConnection then SnapConnection:Disconnect() end
+            SnapConnection = RunService.RenderStepped:Connect(function()
+                if not SnapActive then return end
+                pcall(function()
+                    local char = LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        if not lockedY then lockedY = hrp.Position.Y - SnapDepth end
+                        for _, part in ipairs(char:GetDescendants()) do
+                            if part:IsA("BasePart") then part.CanCollide = false end
+                        end
+                        local vel = hrp.AssemblyLinearVelocity
+                        hrp.AssemblyLinearVelocity = Vector3.new(vel.X, 0, vel.Z)
+                        local cf = hrp.CFrame
+                        hrp.CFrame = CFrame.new(cf.X, lockedY, cf.Z) * (cf - cf.Position)
+                    end
+                end)
+            end)
+            WindUI:Notify({ Title = "DMX HUB", Content = "Snap ENABLED", Duration = 1.5 })
+        else
+            if SnapConnection then SnapConnection:Disconnect() SnapConnection = nil end
+            pcall(function()
+                local char = LocalPlayer.Character
+                if char then
+                    for _, part in ipairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") then part.CanCollide = true end
+                    end
+                end
+            end)
+            lockedY = nil
+            WindUI:Notify({ Title = "DMX HUB", Content = "Snap DISABLED", Duration = 1.5 })
+        end
+    end
+})
+
+GeneralTab:Slider({
+    Title = "Underground Distance (studs)",
+    Desc = "Depth for snap.",
+    Step = 1,
+
+    Value = {
+        Min = 5,
+        Max = 100,
+        Default = 15,
+    },
+
+    Callback = function(value)
+        SnapDepth = value
+        lockedY = nil
+    end
+})
+
+local enabledSkip = false
+
+GeneralTab:Toggle({
+    Title = "Auto Skip Crates",
+    Desc = "Automatically skip crates.",
+    Value = false,
+
+    Callback = function(estado)
+        enabledSkip = estado
+        WindUI:Notify({
+            Title = "Crate Skip",
+            Content = estado and "Auto Skip ENABLED" or "Auto Skip DISABLED",
+            Duration = 1.5,
+        })
+    end
+})
+
+task.spawn(function()
+    while true do
+        if enabledSkip then
+            pcall(function()
+                local modules = ReplicatedStorage:FindFirstChild("Modules")
+                if modules then
+                    local game_mod = modules:FindFirstChild("Game")
+                    if game_mod then
+                        local crateSys = game_mod:FindFirstChild("CrateSystem")
+                        if crateSys then
+                            local crateMod = crateSys:FindFirstChild("Crate")
+                            if crateMod then
+                                local CrateController = require(crateMod)
+                                if CrateController and CrateController.class and CrateController.class.objects then
+                                    for _, crate in pairs(CrateController.class.objects) do
+                                        if crate.states and crate.states.open then 
+                                            crate.states.open.set(true) 
+                                        end
+                                        if CrateController.skipping and CrateController.skipping.set then 
+                                            CrateController.skipping.set(true) 
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(0.1)
+        else
+            task.wait(1)
+        end
+    end
+end)
+
+local PlayerAutoOptimizeEnabled = false
+
+GeneralTab:Toggle({
+    Title = "Auto Player Optimization",
+    Desc = "Optimize game performance.",
+    Value = false,
+
+    Callback = function(estado)
+        PlayerAutoOptimizeEnabled = estado
+        pcall(function()
+            local lighting = game:GetService("Lighting")
+            if estado then
+                lighting.GlobalShadows = false
+                lighting.FogEnd = 9e9
+                for _, v in ipairs(Workspace:GetDescendants()) do
+                    if v:IsA("BasePart") then
+                        v.Material = Enum.Material.SmoothPlastic
+                        v.Reflectance = 0
+                    end
+                end
+                WindUI:Notify({
+                    Title = "Optimization",
+                    Content = "Auto Player Optimization ENABLED",
+                    Duration = 1.5,
+                })
+            else
+                lighting.GlobalShadows = true
+                WindUI:Notify({
+                    Title = "Optimization",
+                    Content = "Auto Player Optimization DISABLED",
+                    Duration = 1.5,
+                })
+            end
+        end)
+    end
+})
+
+--==================================================
+-- COMBAT / FOV
+--==================================================
+
+local CombatTab = Window:Tab({
+    Title = "Combat",
+    Icon = "swords",
+})
+
+CombatTab:Section({
+    Title = "FOV Rainbow",
+})
+
+local FOVPercent = 50
+local FOVEnabled = false
+
+local FOVGui = Instance.new("ScreenGui")
+FOVGui.Name = "ArabeHubFOV"
+FOVGui.ResetOnSpawn = false
+FOVGui.IgnoreGuiInset = true
+FOVGui.Enabled = false
+FOVGui.Parent = CoreGui
+
+local FOVCircle = Instance.new("Frame")
+FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+FOVCircle.Position = UDim2.fromScale(0.5, 0.5)
+FOVCircle.Size = UDim2.fromOffset(275, 275)
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.Parent = FOVGui
+
+local FOVCorner = Instance.new("UICorner")
+FOVCorner.CornerRadius = UDim.new(1, 0)
+FOVCorner.Parent = FOVCircle
+
+local FOVStroke = Instance.new("UIStroke")
+FOVStroke.Thickness = 2
+FOVStroke.Transparency = 0.1
+FOVStroke.Parent = FOVCircle
+
+local function UpdateFOV()
+    local size = 50 + (FOVPercent * 4.5)
+    FOVCircle.Size = UDim2.fromOffset(size, size)
+end
+
+UpdateFOV()
+
+RunService.RenderStepped:Connect(function()
+    if FOVEnabled then
+        pcall(function()
+            local hue = (tick() * 0.25) % 1
+            FOVStroke.Color = Color3.fromHSV(hue, 1, 1)
+        end)
+    end
+end)
+
+CombatTab:Toggle({
+    Title = "Enable Rainbow FOV",
+    Desc = "Displays a rainbow FOV circle.",
+    Value = false,
+
+    Callback = function(Value)
+        FOVEnabled = Value
+        FOVGui.Enabled = Value
+    end,
+})
+
+CombatTab:Slider({
+    Title = "FOV Radius",
+    Desc = "Circle size.",
+    Step = 5,
+
+    Value = {
+        Min = 30,
+        Max = 300,
+        Default = 120,
+    },
+
+    Callback = function(Value)
+        FOVPercent = (Value - 30) / 270 * 100
+        UpdateFOV()
+    end,
+})
+
+--==================================================
+-- NO RECOIL (SAFE - NO REMOTE HOOKS)
+--==================================================
+
+CombatTab:Section({
+    Title = "Weapon Options",
+})
+
+local NoRecoilEnabled = false
+
+CombatTab:Toggle({
+    Title = "No Recoil / Spread",
+    Desc = "Removes weapon recoil and spread.",
+    Value = false,
+
+    Callback = function(Value)
+        NoRecoilEnabled = Value
+        WindUI:Notify({
+            Title = "No Recoil",
+            Content = Value and "No Recoil ENABLED" or "No Recoil DISABLED",
+            Duration = 1.5,
+        })
+    end,
+})
+
+task.spawn(function()
+    while true do
+        if NoRecoilEnabled then
+            pcall(function()
+                local char = LocalPlayer.Character
+                local backpack = LocalPlayer:FindFirstChild("Backpack")
+                if char then
+                    for _, tool in ipairs(char:GetChildren()) do
+                        if tool:IsA("Tool") then
+                            for _, v in ipairs(tool:GetDescendants()) do
+                                if (v:IsA("NumberValue") or v:IsA("IntValue")) then
+                                    local name = v.Name:lower()
+                                    if name:find("recoil") or name:find("spread") or name:find("shake") then
+                                        v.Value = 0
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                if backpack then
+                    for _, tool in ipairs(backpack:GetChildren()) do
+                        if tool:IsA("Tool") then
+                            for _, v in ipairs(tool:GetDescendants()) do
+                                if (v:IsA("NumberValue") or v:IsA("IntValue")) then
+                                    local name = v.Name:lower()
+                                    if name:find("recoil") or name:find("spread") or name:find("shake") then
+                                        v.Value = 0
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+        task.wait(0.5)
+    end
+end)
+
+--==================================================
+-- PLAYER
+--==================================================
+
+local PlayerTab = Window:Tab({
+    Title = "Player",
+    Icon = "user",
+})
+
+--==================================================
+-- DISTANCE
+--==================================================
+
+PlayerTab:Section({
+    Title = "Player Info",
+})
+
+local DistanceEnabled = false
+local DistanceLabels = {}
+local DistanceConnection
+
+local function RemoveDistance(player)
+    pcall(function()
+        local gui = DistanceLabels[player]
+        if gui then
+            gui:Destroy()
+            DistanceLabels[player] = nil
+        end
+    end)
+end
+
+local function CreateDistance(player)
+    pcall(function()
+        if player == LocalPlayer then return end
+
+        local character = player.Character
+        if not character then return end
+
+        local root = character:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+
+        RemoveDistance(player)
+
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "DistanceDisplay"
+        billboard.Adornee = root
+        billboard.Size = UDim2.fromOffset(120, 28)
+        billboard.StudsOffset = Vector3.new(0, 3.5, 0)
+        billboard.AlwaysOnTop = true
+        billboard.Parent = root
+
+        local label = Instance.new("TextLabel")
+        label.BackgroundTransparency = 1
+        label.Size = UDim2.fromScale(1, 1)
+        label.TextScaled = true
+        label.Font = Enum.Font.GothamBold
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextStrokeTransparency = 0.4
+        label.Text = "0 m"
+        label.Parent = billboard
+
+        DistanceLabels[player] = billboard
+    end)
+end
+
+local function UpdateDistances()
+    if not DistanceEnabled then return end
+
+    pcall(function()
+        local character = LocalPlayer.Character
+        if not character then return end
+
+        local myRoot = character:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return end
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                local targetCharacter = player.Character
+                local root = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+
+                if root then
+                    if not DistanceLabels[player] then
+                        CreateDistance(player)
+                    end
+
+                    local billboard = DistanceLabels[player]
+                    if billboard then
+                        local label = billboard:FindFirstChildOfClass("TextLabel")
+                        if label then
+                            local distance = (myRoot.Position - root.Position).Magnitude
+                            label.Text = string.format("%d m", math.floor(distance + 0.5))
+                        end
+                    end
+                else
+                    RemoveDistance(player)
+                end
+            end
+        end
+    end)
+end
+
+local function SetDistance(enabled)
+    DistanceEnabled = enabled
+
+    if enabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            CreateDistance(player)
+        end
+
+        if not DistanceConnection then
+            DistanceConnection = RunService.RenderStepped:Connect(UpdateDistances)
+        end
+    else
+        for player in pairs(DistanceLabels) do
+            RemoveDistance(player)
+        end
+
+        if DistanceConnection then
+            DistanceConnection:Disconnect()
+            DistanceConnection = nil
+        end
+    end
+end
+
+Players.PlayerRemoving:Connect(function(player)
+    RemoveDistance(player)
+end)
+
+PlayerTab:Toggle({
+    Title = "Distance",
+    Desc = "Shows distance to other players.",
+    Value = false,
+
+    Callback = function(Value)
+        SetDistance(Value)
+    end,
+})
+
+--==================================================
+-- PLAYER ESP
+--==================================================
+
+PlayerTab:Section({
+    Title = "Visual Info",
+})
+
+local PlayerESPEnabled = false
+local PlayerESPObjects = {}
+local PlayerESPConnection
+
+local function RemovePlayerESP(player)
+    pcall(function()
+        local data = PlayerESPObjects[player]
+        if data then
+            if data.Highlight then data.Highlight:Destroy() end
+            if data.Billboard then data.Billboard:Destroy() end
+            PlayerESPObjects[player] = nil
+        end
+    end)
+end
+
+local function CreatePlayerESP(player)
+    pcall(function()
+        if not PlayerESPEnabled then return end
+        if player == LocalPlayer then return end
+
+        local character = player.Character
+        if not character then return end
+
+        local head = character:FindFirstChild("Head")
+        local root = character:FindFirstChild("HumanoidRootPart")
+
+        if not head or not root then return end
+
+        RemovePlayerESP(player)
+
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "ArabePlayerESP"
+        highlight.Adornee = character
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.FillTransparency = 0.65
+        highlight.OutlineTransparency = 0
+        highlight.FillColor = Color3.fromRGB(210, 35, 55)
+        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+        highlight.Parent = character
+
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "ArabePlayerInfo"
+        billboard.Adornee = head
+        billboard.Size = UDim2.fromOffset(180, 45)
+        billboard.StudsOffset = Vector3.new(0, 3.5, 0)
+        billboard.AlwaysOnTop = true
+        billboard.LightInfluence = 0
+        billboard.Parent = character
+
+        local label = Instance.new("TextLabel")
+        label.Name = "PlayerInfo"
+        label.BackgroundTransparency = 1
+        label.Size = UDim2.fromScale(1, 1)
+        label.Font = Enum.Font.GothamBold
+        label.TextScaled = true
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextStrokeTransparency = 0
+        label.Text = player.Name
+        label.Parent = billboard
+
+        PlayerESPObjects[player] = {
+            Highlight = highlight,
+            Billboard = billboard,
+            Label = label,
+        }
+    end)
+end
+
+local function UpdatePlayerESP()
+    if not PlayerESPEnabled then return end
+
+    pcall(function()
+        local myCharacter = LocalPlayer.Character
+        if not myCharacter then return end
+
+        local myRoot = myCharacter:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return end
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                local character = player.Character
+                local root = character and character:FindFirstChild("HumanoidRootPart")
+
+                if root then
+                    if not PlayerESPObjects[player] then
+                        CreatePlayerESP(player)
+                    end
+
+                    local data = PlayerESPObjects[player]
+                    if data and data.Label then
+                        local distance = (myRoot.Position - root.Position).Magnitude
+                        data.Label.Text = string.format("%s\n%d m", player.Name, math.floor(distance + 0.5))
+                    end
+                else
+                    RemovePlayerESP(player)
+                end
+            end
+        end
+    end)
+end
+
+local function SetPlayerESP(enabled)
+    PlayerESPEnabled = enabled
+
+    if enabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            CreatePlayerESP(player)
+        end
+
+        if not PlayerESPConnection then
+            PlayerESPConnection = RunService.RenderStepped:Connect(UpdatePlayerESP)
+        end
+
+        WindUI:Notify({
+            Title = "Player ESP",
+            Content = "Player names ENABLED",
+            Duration = 2,
+        })
+    else
+        for player in pairs(PlayerESPObjects) do
+            RemovePlayerESP(player)
+        end
+
+        if PlayerESPConnection then
+            PlayerESPConnection:Disconnect()
+            PlayerESPConnection = nil
+        end
+
+        WindUI:Notify({
+            Title = "Player ESP",
+            Content = "Player names DISABLED",
+            Duration = 2,
+        })
+    end
+end
+
+PlayerTab:Toggle({
+    Title = "Player Names",
+    Desc = "Shows player names and distance.",
+    Value = false,
+
+    Callback = function(Value)
+        SetPlayerESP(Value)
+    end,
+})
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        if PlayerESPEnabled then
+            task.wait(0.3)
+            CreatePlayerESP(player)
+        end
+    end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    RemovePlayerESP(player)
+end)
+
+--==================================================
+-- INFINITE STAMINA
+--==================================================
+
+PlayerTab:Section({
+    Title = "Stamina & Speed",
+})
+
+local InfStaminaEnabled = false
+
+PlayerTab:Toggle({
+    Title = "Infinite Stamina",
+    Desc = "Unlimited stamina while running.",
+    Value = false,
+
+    Callback = function(Value)
+        InfStaminaEnabled = Value
+        WindUI:Notify({
+            Title = "Infinite Stamina",
+            Content = Value and "Infinite Stamina ENABLED" or "Infinite Stamina DISABLED",
+            Duration = 1.5,
+        })
+    end,
+})
+
+task.spawn(function()
+    while true do
+        if InfStaminaEnabled then
+            pcall(function()
+                local success, sprintModule = pcall(function()
+                    return require(ReplicatedStorage.Modules.Game.Sprint)
+                end)
+                if success and sprintModule then
+                    local stamina = sprintModule.stamina
+                    if stamina then
+                        stamina.current = stamina.max
+                    end
+                end
+            end)
+        end
+        task.wait(0.1)
+    end
+end)
+
+--==================================================
+-- SPEED HACK
+--==================================================
+
+local SpeedHackEnabled = false
+local SpeedValue = 4
+
+PlayerTab:Toggle({
+    Title = "Speed Hack",
+    Desc = "Increases movement speed.",
+    Value = false,
+
+    Callback = function(Value)
+        SpeedHackEnabled = Value
+        WindUI:Notify({
+            Title = "Speed Hack",
+            Content = Value and "Speed Hack ENABLED" or "Speed Hack DISABLED",
+            Duration = 1.5,
+        })
+    end,
+})
+
+PlayerTab:Slider({
+    Title = "Speed Level (max 20)",
+    Desc = "Movement speed multiplier.",
+    Step = 1,
+
+    Value = {
+        Min = 1,
+        Max = 20,
+        Default = 4,
+    },
+
+    Callback = function(Value)
+        SpeedValue = Value
+    end,
+})
+
+RunService.RenderStepped:Connect(function(dt)
+    if SpeedHackEnabled and LocalPlayer.Character then
+        pcall(function()
+            local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
+            local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hum and root and hum.MoveDirection.Magnitude > 0 then
+                local factor = (SpeedValue / 20) * 1.8
+                local moveVec = hum.MoveDirection.Unit * (factor * 14 * dt)
+                root.CFrame = root.CFrame + Vector3.new(moveVec.X, 0, moveVec.Z)
+            end
+        end)
+    end
+end)
+
+--==================================================
+-- JUMP
+--==================================================
+
+local JumpPowerEnabled = false
+local JumpPowerValue = 50
+
+PlayerTab:Section({
+    Title = "Jumper",
+})
+
+PlayerTab:Toggle({
+    Title = "Jump Boost",
+    Desc = "Increase jump height.",
+    Value = false,
+
+    Callback = function(Value)
+        JumpPowerEnabled = Value
+        WindUI:Notify({
+            Title = "Jump Boost",
+            Content = Value and "Jump Boost ENABLED" or "Jump Boost DISABLED",
+            Duration = 1.5,
+        })
+    end,
+})
+
+PlayerTab:Slider({
+    Title = "Jump Height",
+    Desc = "Jump power.",
+    Step = 1,
+
+    Value = {
+        Min = 7,
+        Max = 120,
+        Default = 50,
+    },
+
+    Callback = function(Value)
+        JumpPowerValue = Value
+    end,
+})
+
+RunService.RenderStepped:Connect(function()
+    if JumpPowerEnabled and LocalPlayer.Character then
+        pcall(function()
+            local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
+            if hum then
+                hum.JumpPower = JumpPowerValue
+            end
+        end)
+    end
+end)
+
+--==================================================
+-- AUTO PICKUP
+--==================================================
+
+local AutoPickupEnabled = false
+
+PlayerTab:Section({
+    Title = "Automation",
+})
+
+PlayerTab:Toggle({
+    Title = "Auto Pickup Items",
+    Desc = "Automatically picks up ground items.",
+    Value = false,
+
+    Callback = function(Value)
+        AutoPickupEnabled = Value
+        WindUI:Notify({
+            Title = "Auto Pickup",
+            Content = Value and "Auto Pickup ENABLED" or "Auto Pickup DISABLED",
+            Duration = 1.5,
+        })
+    end,
+})
+
+task.spawn(function()
+    while true do
+        if AutoPickupEnabled then
+            pcall(function()
+                local character = LocalPlayer.Character
+                local root = character and (character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso"))
+                if root then
+                    local droppedFolder = Workspace:FindFirstChild("DroppedItems")
+                    if droppedFolder then
+                        for _, item in ipairs(droppedFolder:GetChildren()) do
+                            local targetPart = item:IsA("Model") and (item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart")) or item
+                            if targetPart then
+                                local prompt = item:FindFirstChildOfClass("ProximityPrompt") or targetPart:FindFirstChildOfClass("ProximityPrompt")
+                                if prompt and fireproximityprompt then 
+                                    fireproximityprompt(prompt) 
+                                end
+                                local touchPart = item:FindFirstChild("PickUpZone") or targetPart
+                                if touchPart and firetouchinterest then
+                                    firetouchinterest(root, touchPart, 0)
+                                    firetouchinterest(root, touchPart, 1)
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(0.2)
+        else
+            task.wait(1)
+        end
+    end
+end)
+
+--==================================================
+-- SETTINGS
+--==================================================
+
+local SettingsTab = Window:Tab({
+    Title = "Settings",
+    Icon = "settings",
+})
+
+SettingsTab:Section({
+    Title = "Performance",
+})
+
+local FPSBoostEnabled = false
+
+local SavedLighting = {
+    GlobalShadows = Lighting.GlobalShadows,
+    FogEnd = Lighting.FogEnd,
+    Brightness = Lighting.Brightness,
+}
+
+local SavedEffects = {}
+
+local EffectClasses = {
+    ParticleEmitter = true,
+    Trail = true,
+    Beam = true,
+    Smoke = true,
+    Fire = true,
+}
+
+local function OptimizeObject(obj)
+    if not EffectClasses[obj.ClassName] then return end
+    if SavedEffects[obj] == nil then
+        SavedEffects[obj] = obj.Enabled
+    end
+    pcall(function()
+        obj.Enabled = false
+    end)
+end
+
+local function SetFPSBoost(enabled)
+    FPSBoostEnabled = enabled
+
+    if enabled then
+        SavedLighting.GlobalShadows = Lighting.GlobalShadows
+        SavedLighting.FogEnd = Lighting.FogEnd
+        SavedLighting.Brightness = Lighting.Brightness
+
+        pcall(function()
+            Lighting.GlobalShadows = false
+            Lighting.FogEnd = 100000
+            Lighting.Brightness = 1
+        end)
+
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            OptimizeObject(obj)
+        end
+
+        WindUI:Notify({
+            Title = "FPS Optimizer",
+            Content = "Optimization enabled.",
+            Duration = 2,
+        })
+    else
+        pcall(function()
+            Lighting.GlobalShadows = SavedLighting.GlobalShadows
+            Lighting.FogEnd = SavedLighting.FogEnd
+            Lighting.Brightness = SavedLighting.Brightness
+        end)
+
+        for obj, state in pairs(SavedEffects) do
+            if obj and obj.Parent then
+                pcall(function()
+                    obj.Enabled = state
+                end)
+            end
+        end
+
+        table.clear(SavedEffects)
+
+        WindUI:Notify({
+            Title = "FPS Optimizer",
+            Content = "Optimization disabled.",
+            Duration = 2,
+        })
+    end
+end
+
+SettingsTab:Toggle({
+    Title = "FPS Optimizer",
+    Desc = "Reduce particles, shadows and visual effects.",
+    Value = false,
+
+    Callback = function(Value)
+        SetFPSBoost(Value)
+    end,
+})
+
+Workspace.DescendantAdded:Connect(function(obj)
+    if FPSBoostEnabled then
+        task.defer(function()
+            OptimizeObject(obj)
+        end)
+    end
+end)
+
+SettingsTab:Section({
+    Title = "Interface",
+})
+
+SettingsTab:Paragraph({
+    Title = "Arabe Hub",
+    Desc = "UI compatible with PC and touch devices.",
+})
+
+--==================================================
+-- START
+--==================================================
+
+WindUI:Notify({
+    Title = "Arabe Hub | BlockSpin",
+    Content = "Menu loaded successfully! ✅",
+    Duration = 3,
+})
