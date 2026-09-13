@@ -1,6 +1,6 @@
 --// ARABE HUB (STABLE - NO CRASHES)
 --// WindUI - BlockSpin + Combat + Player Features
---// FIXED: Removed all remote hooks causing Roblox crash
+--// FIXED: Removed all remote hooks causing Roblox crash + INVENTORY ESP INCLUDED
 
 local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
@@ -138,7 +138,7 @@ GeneralTab:Section({
 
 GeneralTab:Paragraph({
     Title = "Features",
-    Desc = "FOV Rainbow • Distance • Player ESP • FPS Booster • No Recoil",
+    Desc = "FOV Rainbow • Distance • Player ESP • FPS Booster • No Recoil • Inventory ESP",
 })
 
 --==================================================
@@ -758,6 +758,205 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --==================================================
+-- INVENTORY ESP (ITEMS)
+--==================================================
+
+PlayerTab:Section({
+    Title = "Inventory ESP",
+})
+
+local inventoryESPEnabled = false
+local WeaponRegistry = {}
+local PlayerBillboards = {}
+
+local RarityColors = {
+    Common = Color3.fromRGB(180, 180, 180),
+    Uncommon = Color3.fromRGB(0, 255, 0),
+    Rare = Color3.fromRGB(0, 112, 221),
+    Epic = Color3.fromRGB(163, 53, 238),
+    Legendary = Color3.fromRGB(255, 128, 0)
+}
+
+local function registerItems(folder)
+    if not folder then return end
+    pcall(function()
+        for _, tool in ipairs(folder:GetChildren()) do
+            if tool:IsA("Tool") then
+                local handle = tool:FindFirstChild("Handle")
+                local displayName = tool:GetAttribute("DisplayName") or tool.Name
+                local itemId = tool:GetAttribute("ItemId") or tool:GetAttribute("Id") or tool.Name
+                local rarity = tool:GetAttribute("RarityName") or "Common"
+                local imageId = tool:GetAttribute("ImageId") or "rbxassetid://7072725737"
+                local key
+                if handle then
+                    local mesh = handle:FindFirstChildOfClass("SpecialMesh")
+                    if mesh and mesh.MeshId ~= "" then
+                        key = mesh.MeshId .. (mesh.TextureId or "") .. "_RARITY_" .. rarity
+                    elseif handle:IsA("MeshPart") and handle.MeshId ~= "" then
+                        key = handle.MeshId .. (handle.TextureID or "") .. "_RARITY_" .. rarity
+                    end
+                end
+                if not key and itemId and itemId ~= "" and itemId ~= tool.Name then
+                    key = "ITEMID_" .. itemId .. "_RARITY_" .. rarity
+                end
+                if not key then
+                    key = "NAME_" .. displayName .. "_" .. tool.Name .. "_RARITY_" .. rarity
+                end
+                WeaponRegistry[key] = { Name = displayName, Rarity = rarity, ImageId = imageId, ToolName = tool.Name }
+            end
+        end
+    end)
+end
+
+local function getItemKey(tool)
+    local handle = tool:FindFirstChild("Handle")
+    local displayName = tool:GetAttribute("DisplayName") or tool.Name
+    local itemId = tool:GetAttribute("ItemId") or tool:GetAttribute("Id") or tool.Name
+    local rarity = tool:GetAttribute("RarityName") or "Common"
+    if handle then
+        local mesh = handle:FindFirstChildOfClass("SpecialMesh")
+        if mesh and mesh.MeshId ~= "" then return mesh.MeshId .. (mesh.TextureId or "") .. "_RARITY_" .. rarity end
+        if handle:IsA("MeshPart") and handle.MeshId ~= "" then return handle.MeshId .. (handle.TextureID or "") .. "_RARITY_" .. rarity end
+    end
+    if itemId and itemId ~= "" and itemId ~= tool.Name then return "ITEMID_" .. itemId .. "_RARITY_" .. rarity end
+    return "NAME_" .. displayName .. "_" .. tool.Name .. "_RARITY_" .. rarity
+end
+
+local function getWeaponInfo(tool)
+    if not tool or not tool:IsA("Tool") then return nil end
+    return WeaponRegistry[getItemKey(tool)]
+end
+
+local function createBillboardForPlayer(player)
+    if not inventoryESPEnabled then return end
+    if player == LocalPlayer then return end
+    local char = player.Character
+    if not char then return end
+    local head = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+    if not head then return end
+    if PlayerBillboards[player] then
+        pcall(function() PlayerBillboards[player]:Destroy() end)
+        PlayerBillboards[player] = nil
+    end
+    
+    pcall(function()
+        local gui = Instance.new("BillboardGui")
+        gui.Name = "DMX_ESP"
+        gui.Adornee = head
+        gui.Size = UDim2.new(0, 140, 0, 45)
+        gui.StudsOffset = Vector3.new(0, 2.5, 0)
+        gui.AlwaysOnTop = true
+        gui.Parent = char
+        
+        local layout = Instance.new("UIListLayout", gui)
+        layout.FillDirection = Enum.FillDirection.Vertical
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Padding = UDim.new(0, 4)
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        
+        local toolsContainer = Instance.new("Frame", gui)
+        toolsContainer.Size = UDim2.new(1, 0, 0, 20)
+        toolsContainer.BackgroundTransparency = 1
+        toolsContainer.LayoutOrder = 1
+        
+        local hLayout = Instance.new("UIListLayout", toolsContainer)
+        hLayout.FillDirection = Enum.FillDirection.Horizontal
+        hLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        hLayout.Padding = UDim.new(0, 5)
+        hLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        
+        local tools = {}
+        for _, bag in ipairs({ "Backpack", "StarterGear", "StarterPack" }) do
+            local b = player:FindFirstChild(bag)
+            if b then
+                for _, t in ipairs(b:GetChildren()) do
+                    if t:IsA("Tool") and t.Name ~= "Fists" then table.insert(tools, t) end
+                end
+            end
+        end
+        for _, t in ipairs(char:GetChildren()) do
+            if t:IsA("Tool") and t.Name ~= "Fists" then table.insert(tools, t) end
+        end
+        
+        for _, tool in ipairs(tools) do
+            local info = getWeaponInfo(tool)
+            if info then
+                local img = Instance.new("ImageLabel", toolsContainer)
+                img.Size = UDim2.new(0, 20, 0, 20)
+                img.BackgroundTransparency = 0.1
+                img.Image = info.ImageId
+                img.BackgroundColor3 = Color3.fromRGB(240, 248, 255)
+                Instance.new("UICorner", img).CornerRadius = UDim.new(0, 10)
+                local stroke = Instance.new("UIStroke", img)
+                stroke.Color = RarityColors[info.Rarity] or Color3.new(1, 1, 1)
+                stroke.Thickness = 2
+            end
+        end
+        
+        PlayerBillboards[player] = gui
+    end)
+end
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        if inventoryESPEnabled then
+            task.wait(0.2)
+            createBillboardForPlayer(player)
+        end
+    end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    pcall(function()
+        if PlayerBillboards[player] then
+            PlayerBillboards[player]:Destroy()
+            PlayerBillboards[player] = nil
+        end
+    end)
+end)
+
+task.spawn(function()
+    local items = ReplicatedStorage:WaitForChild("Items", 15)
+    if items then
+        for _, folderName in ipairs({ "gun", "melee", "throwable", "consumable", "farming", "misc", "rod", "fish" }) do
+            local folder = items:FindFirstChild(folderName)
+            if folder then
+                registerItems(folder)
+            end
+        end
+    end
+end)
+
+local function refreshAll()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if inventoryESPEnabled then
+            createBillboardForPlayer(p)
+        else
+            if PlayerBillboards[p] then
+                pcall(function() PlayerBillboards[p]:Destroy() end)
+                PlayerBillboards[p] = nil
+            end
+        end
+    end
+end
+
+PlayerTab:Toggle({
+    Title = "Inventory ESP",
+    Desc = "Shows other players' inventories & weapons.",
+    Value = false,
+
+    Callback = function(estado)
+        inventoryESPEnabled = estado
+        refreshAll()
+        WindUI:Notify({
+            Title = "Inventory ESP",
+            Content = estado and "Inventory ESP ENABLED" or "Inventory ESP DISABLED",
+            Duration = 1.5,
+        })
+    end
+})
+
+--==================================================
 -- INFINITE STAMINA
 --==================================================
 
@@ -1086,6 +1285,6 @@ SettingsTab:Paragraph({
 
 WindUI:Notify({
     Title = "Arabe Hub | BlockSpin",
-    Content = "Menu loaded successfully! ✅",
+    Content = "Menu loaded successfully! ✅ (Inventory ESP Included)",
     Duration = 3,
 })
