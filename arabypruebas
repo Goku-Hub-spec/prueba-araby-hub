@@ -1,25 +1,20 @@
---// ARABE HUB (STABLE - NO CRASHES)
+--// ARABE HUB (DMX INTEGRATION - SILENT AIM FUNCIONAL)
 --// WindUI - BlockSpin + Combat + Player Features
---// FIXED: Removed all remote hooks causing Roblox crash + INVENTORY ESP INCLUDED
+--// INTEGRATED: Silent Aim from DMX HUB (WORKING)
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local Camera = Workspace.CurrentCamera
+local CoreGui = game:GetService("CoreGui")
+local Lighting = game:GetService("Lighting")
+local UserInputService = game:GetService("UserInputService")
 
 local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
 ))()
-
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local Lighting = game:GetService("Lighting")
-local Workspace = game:GetService("Workspace")
-local UserInputService = game:GetService("UserInputService")
-local CoreGui = game:GetService("CoreGui")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local LocalPlayer = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
-
---==================================================
--- WINDOW
---==================================================
 
 local Window = WindUI:CreateWindow({
     Title = "Árabe Hub | BlockSpin",
@@ -138,7 +133,7 @@ GeneralTab:Section({
 
 GeneralTab:Paragraph({
     Title = "Features",
-    Desc = "FOV Rainbow • Distance • Player ESP • FPS Booster • No Recoil • Inventory ESP",
+    Desc = "FOV Rainbow • Distance • Player ESP • FPS Booster • Silent Aim • No Recoil",
 })
 
 --==================================================
@@ -305,7 +300,7 @@ GeneralTab:Toggle({
 })
 
 --==================================================
--- COMBAT / FOV
+-- COMBAT / FOV + SILENT AIM (DMX)
 --==================================================
 
 local CombatTab = Window:Tab({
@@ -320,43 +315,51 @@ CombatTab:Section({
 local FOVPercent = 50
 local FOVEnabled = false
 
-local FOVGui = Instance.new("ScreenGui")
-FOVGui.Name = "ArabeHubFOV"
-FOVGui.ResetOnSpawn = false
-FOVGui.IgnoreGuiInset = true
-FOVGui.Enabled = false
-FOVGui.Parent = CoreGui
+local fovLines = {}
+local numLines = 16
 
-local FOVCircle = Instance.new("Frame")
-FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-FOVCircle.Position = UDim2.fromScale(0.5, 0.5)
-FOVCircle.Size = UDim2.fromOffset(275, 275)
-FOVCircle.BackgroundTransparency = 1
-FOVCircle.Parent = FOVGui
+pcall(function()
+    if Drawing and Drawing.new then
+        for i = 1, numLines do
+            local line = Drawing.new("Line")
+            line.Visible = false
+            line.Thickness = 2
+            table.insert(fovLines, line)
+        end
+    end
+end)
 
-local FOVCorner = Instance.new("UICorner")
-FOVCorner.CornerRadius = UDim.new(1, 0)
-FOVCorner.Parent = FOVCircle
-
-local FOVStroke = Instance.new("UIStroke")
-FOVStroke.Thickness = 2
-FOVStroke.Transparency = 0.1
-FOVStroke.Parent = FOVCircle
-
-local function UpdateFOV()
-    local size = 50 + (FOVPercent * 4.5)
-    FOVCircle.Size = UDim2.fromOffset(size, size)
+local function UpdateFOVDrawing()
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local fovRadius = 50 + (FOVPercent * 4.5)
+    
+    if FOVEnabled and #fovLines > 0 then
+        pcall(function()
+            local timeVal = tick() * 0.6
+            for i, line in ipairs(fovLines) do
+                local angle1 = math.rad((i - 1) * (360 / numLines))
+                local angle2 = math.rad(i * (360 / numLines))
+                
+                local p1 = center + Vector2.new(math.cos(angle1), math.sin(angle1)) * fovRadius
+                local p2 = center + Vector2.new(math.cos(angle2), math.sin(angle2)) * fovRadius
+                
+                line.From = p1
+                line.To = p2
+                
+                local hue = (timeVal + (i / numLines)) % 1
+                line.Color = Color3.fromHSV(hue, 1, 1)
+                line.Visible = true
+            end
+        end)
+    else
+        for _, line in ipairs(fovLines) do
+            line.Visible = false
+        end
+    end
 end
 
-UpdateFOV()
-
 RunService.RenderStepped:Connect(function()
-    if FOVEnabled then
-        pcall(function()
-            local hue = (tick() * 0.25) % 1
-            FOVStroke.Color = Color3.fromHSV(hue, 1, 1)
-        end)
-    end
+    UpdateFOVDrawing()
 end)
 
 CombatTab:Toggle({
@@ -366,7 +369,6 @@ CombatTab:Toggle({
 
     Callback = function(Value)
         FOVEnabled = Value
-        FOVGui.Enabled = Value
     end,
 })
 
@@ -383,12 +385,220 @@ CombatTab:Slider({
 
     Callback = function(Value)
         FOVPercent = (Value - 30) / 270 * 100
-        UpdateFOV()
     end,
 })
 
 --==================================================
--- NO RECOIL (SAFE - NO REMOTE HOOKS)
+-- SILENT AIM (DMX VERSION - WORKING)
+--==================================================
+
+CombatTab:Section({
+    Title = "Silent Aim & Wallbang",
+})
+
+local SilentAimEnabled = false
+local CurrentLockedTarget = nil
+local RaycastParamsCache = RaycastParams.new()
+RaycastParamsCache.FilterType = Enum.RaycastFilterType.Exclude
+RaycastParamsCache.IgnoreWater = true
+
+local function isInCarOrVehicle(char, targetPart)
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum and hum.SeatPart then return true end
+    local parent = char.Parent
+    while parent and parent ~= Workspace do
+        local pName = parent.Name:lower()
+        if pName:find("vehicle") or pName:find("car") or pName:find("auto") or pName:find("bike") then
+            return true
+        end
+        parent = parent.Parent
+    end
+    return false
+end
+
+local function isTargetVisibleOrInCar(targetPart)
+    local char = LocalPlayer.Character
+    local targetChar = targetPart and targetPart.Parent
+    local head = char and char:FindFirstChild("Head")
+    if not head or not targetPart or not targetChar then return false end
+
+    if isInCarOrVehicle(targetChar, targetPart) then
+        return true
+    end
+
+    local origin = head.Position
+    local targetPos = targetPart.Position
+    local direction = targetPos - origin
+
+    RaycastParamsCache.FilterDescendantsInstances = {char, targetChar}
+    local result = Workspace:Raycast(origin, direction, RaycastParamsCache)
+
+    if not result then
+        return true
+    else
+        local hitPart = result.Instance
+        if hitPart then
+            local material = hitPart.Material
+            local name = hitPart.Name:lower()
+            if material == Enum.Material.Glass or name:find("glass") or name:find("window") then
+                RaycastParamsCache.FilterDescendantsInstances = {char, targetChar, hitPart}
+                local secondResult = Workspace:Raycast(result.Position + (direction.Unit * 0.5), targetPos - (result.Position + (direction.Unit * 0.5)), RaycastParamsCache)
+                if not secondResult then return true end
+            end
+        end
+        return false
+    end
+end
+
+local VelocityCache = {}
+
+RunService.Heartbeat:Connect(function()
+    pcall(function()
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if pl ~= LocalPlayer and pl.Character then
+                local root = pl.Character:FindFirstChild("HumanoidRootPart")
+                local hum = pl.Character:FindFirstChild("Humanoid")
+                if root and hum and hum.Health > 0 then
+                    VelocityCache[pl] = VelocityCache[pl] or {}
+                    table.insert(VelocityCache[pl], {time = os.clock(), pos = root.Position})
+                    if #VelocityCache[pl] > 8 then table.remove(VelocityCache[pl], 1) end
+                else
+                    VelocityCache[pl] = nil
+                end
+            end
+        end
+    end)
+end)
+
+local function getCalculatedVelocity(pl, rootPart)
+    if rootPart and rootPart.AssemblyLinearVelocity.Magnitude > 22 then
+        return rootPart.AssemblyLinearVelocity
+    end
+    local data = VelocityCache[pl]
+    if not data or #data < 2 then return Vector3.zero end
+    local vel = Vector3.zero
+    local count = 0
+    for i = 2, #data do
+        local dt = data[i].time - data[i - 1].time
+        if dt > 0 then
+            vel = vel + (data[i].pos - data[i - 1].pos) / dt
+            count = count + 1
+        end
+    end
+    return count > 0 and (vel / count) or Vector3.zero
+end
+
+local function getPing()
+    pcall(function()
+        local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+        if pGui and pGui:FindFirstChild("NetworkStats") and pGui.NetworkStats:FindFirstChild("PingLabel") then
+            local ms = tonumber(pGui.NetworkStats.PingLabel.Text:match("%d+"))
+            if ms then return math.clamp(ms / 1000, 0.04, 1.2) end
+        end
+    end)
+    return 0.08
+end
+
+local function predictTargetPos(targetPart)
+    if not targetPart then return Vector3.zero end
+    local character = targetPart.Parent
+    local pl = character and Players:GetPlayerFromCharacter(character)
+    if not pl then return targetPart.Position end
+    local vel = getCalculatedVelocity(pl, character:FindFirstChild("HumanoidRootPart"))
+    local ping = getPing()
+    return targetPart.Position + (vel * (ping + 0.15) * 1.5)
+end
+
+local function getClosestPlayerInFOV()
+    local bestTarget = nil
+    local shortestDist = 999999
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local fovRadius = 50 + (FOVPercent * 4.5)
+    
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer and pl.Character then
+            local char = pl.Character
+            local head = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChild("Humanoid")
+            if head and hum and hum.Health > 0 then
+                if isTargetVisibleOrInCar(head) then
+                    local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+                    if onScreen and screenPos.Z > 0 then
+                        local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+                        if screenDist <= fovRadius and screenDist < shortestDist then
+                            shortestDist = screenDist
+                            bestTarget = pl
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return bestTarget
+end
+
+-- DMX HOOK - DIRECT IMPLEMENTATION
+local RemoteFolder = ReplicatedStorage:FindFirstChild("Remotes")
+local SendRemote = RemoteFolder and RemoteFolder:FindFirstChild("Send")
+
+if SendRemote and hookfunction then
+    local originalFireServer = SendRemote.FireServer
+    
+    hookfunction(originalFireServer, function(self, ...)
+        if self ~= SendRemote then return originalFireServer(self, ...) end
+        
+        local args = {...}
+        
+        if SilentAimEnabled and args[2] == "shoot_gun" and CurrentLockedTarget then
+            local targetChar = CurrentLockedTarget.Character
+            if targetChar then
+                local hitPart = targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart")
+                local myHead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head")
+                
+                if hitPart and myHead and isTargetVisibleOrInCar(hitPart) then
+                    local predPos = predictTargetPos(hitPart)
+                    local startOrigin = myHead.Position
+                    
+                    args[4] = CFrame.new(startOrigin, predPos)
+                    args[5] = {
+                        [1] = {
+                            [1] = {
+                                Instance = hitPart,
+                                Normal = Vector3.new(0, 1, 0),
+                                Position = predPos
+                            }
+                        }
+                    }
+                end
+            end
+        end
+        
+        return originalFireServer(self, unpack(args))
+    end)
+end
+
+RunService.RenderStepped:Connect(function()
+    CurrentLockedTarget = SilentAimEnabled and getClosestPlayerInFOV() or nil
+end)
+
+CombatTab:Toggle({
+    Title = "Enable Silent Aim",
+    Desc = "Automatic aiming with movement prediction.",
+    Value = false,
+
+    Callback = function(Value)
+        SilentAimEnabled = Value
+        WindUI:Notify({
+            Title = "Silent Aim",
+            Content = Value and "Silent Aim ENABLED" or "Silent Aim DISABLED",
+            Duration = 1.5,
+        })
+    end,
+})
+
+--==================================================
+-- NO RECOIL
 --==================================================
 
 CombatTab:Section({
@@ -758,205 +968,6 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --==================================================
--- INVENTORY ESP (ITEMS)
---==================================================
-
-PlayerTab:Section({
-    Title = "Inventory ESP",
-})
-
-local inventoryESPEnabled = false
-local WeaponRegistry = {}
-local PlayerBillboards = {}
-
-local RarityColors = {
-    Common = Color3.fromRGB(180, 180, 180),
-    Uncommon = Color3.fromRGB(0, 255, 0),
-    Rare = Color3.fromRGB(0, 112, 221),
-    Epic = Color3.fromRGB(163, 53, 238),
-    Legendary = Color3.fromRGB(255, 128, 0)
-}
-
-local function registerItems(folder)
-    if not folder then return end
-    pcall(function()
-        for _, tool in ipairs(folder:GetChildren()) do
-            if tool:IsA("Tool") then
-                local handle = tool:FindFirstChild("Handle")
-                local displayName = tool:GetAttribute("DisplayName") or tool.Name
-                local itemId = tool:GetAttribute("ItemId") or tool:GetAttribute("Id") or tool.Name
-                local rarity = tool:GetAttribute("RarityName") or "Common"
-                local imageId = tool:GetAttribute("ImageId") or "rbxassetid://7072725737"
-                local key
-                if handle then
-                    local mesh = handle:FindFirstChildOfClass("SpecialMesh")
-                    if mesh and mesh.MeshId ~= "" then
-                        key = mesh.MeshId .. (mesh.TextureId or "") .. "_RARITY_" .. rarity
-                    elseif handle:IsA("MeshPart") and handle.MeshId ~= "" then
-                        key = handle.MeshId .. (handle.TextureID or "") .. "_RARITY_" .. rarity
-                    end
-                end
-                if not key and itemId and itemId ~= "" and itemId ~= tool.Name then
-                    key = "ITEMID_" .. itemId .. "_RARITY_" .. rarity
-                end
-                if not key then
-                    key = "NAME_" .. displayName .. "_" .. tool.Name .. "_RARITY_" .. rarity
-                end
-                WeaponRegistry[key] = { Name = displayName, Rarity = rarity, ImageId = imageId, ToolName = tool.Name }
-            end
-        end
-    end)
-end
-
-local function getItemKey(tool)
-    local handle = tool:FindFirstChild("Handle")
-    local displayName = tool:GetAttribute("DisplayName") or tool.Name
-    local itemId = tool:GetAttribute("ItemId") or tool:GetAttribute("Id") or tool.Name
-    local rarity = tool:GetAttribute("RarityName") or "Common"
-    if handle then
-        local mesh = handle:FindFirstChildOfClass("SpecialMesh")
-        if mesh and mesh.MeshId ~= "" then return mesh.MeshId .. (mesh.TextureId or "") .. "_RARITY_" .. rarity end
-        if handle:IsA("MeshPart") and handle.MeshId ~= "" then return handle.MeshId .. (handle.TextureID or "") .. "_RARITY_" .. rarity end
-    end
-    if itemId and itemId ~= "" and itemId ~= tool.Name then return "ITEMID_" .. itemId .. "_RARITY_" .. rarity end
-    return "NAME_" .. displayName .. "_" .. tool.Name .. "_RARITY_" .. rarity
-end
-
-local function getWeaponInfo(tool)
-    if not tool or not tool:IsA("Tool") then return nil end
-    return WeaponRegistry[getItemKey(tool)]
-end
-
-local function createBillboardForPlayer(player)
-    if not inventoryESPEnabled then return end
-    if player == LocalPlayer then return end
-    local char = player.Character
-    if not char then return end
-    local head = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
-    if not head then return end
-    if PlayerBillboards[player] then
-        pcall(function() PlayerBillboards[player]:Destroy() end)
-        PlayerBillboards[player] = nil
-    end
-    
-    pcall(function()
-        local gui = Instance.new("BillboardGui")
-        gui.Name = "DMX_ESP"
-        gui.Adornee = head
-        gui.Size = UDim2.new(0, 140, 0, 45)
-        gui.StudsOffset = Vector3.new(0, 2.5, 0)
-        gui.AlwaysOnTop = true
-        gui.Parent = char
-        
-        local layout = Instance.new("UIListLayout", gui)
-        layout.FillDirection = Enum.FillDirection.Vertical
-        layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Padding = UDim.new(0, 4)
-        layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-        
-        local toolsContainer = Instance.new("Frame", gui)
-        toolsContainer.Size = UDim2.new(1, 0, 0, 20)
-        toolsContainer.BackgroundTransparency = 1
-        toolsContainer.LayoutOrder = 1
-        
-        local hLayout = Instance.new("UIListLayout", toolsContainer)
-        hLayout.FillDirection = Enum.FillDirection.Horizontal
-        hLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        hLayout.Padding = UDim.new(0, 5)
-        hLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-        
-        local tools = {}
-        for _, bag in ipairs({ "Backpack", "StarterGear", "StarterPack" }) do
-            local b = player:FindFirstChild(bag)
-            if b then
-                for _, t in ipairs(b:GetChildren()) do
-                    if t:IsA("Tool") and t.Name ~= "Fists" then table.insert(tools, t) end
-                end
-            end
-        end
-        for _, t in ipairs(char:GetChildren()) do
-            if t:IsA("Tool") and t.Name ~= "Fists" then table.insert(tools, t) end
-        end
-        
-        for _, tool in ipairs(tools) do
-            local info = getWeaponInfo(tool)
-            if info then
-                local img = Instance.new("ImageLabel", toolsContainer)
-                img.Size = UDim2.new(0, 20, 0, 20)
-                img.BackgroundTransparency = 0.1
-                img.Image = info.ImageId
-                img.BackgroundColor3 = Color3.fromRGB(240, 248, 255)
-                Instance.new("UICorner", img).CornerRadius = UDim.new(0, 10)
-                local stroke = Instance.new("UIStroke", img)
-                stroke.Color = RarityColors[info.Rarity] or Color3.new(1, 1, 1)
-                stroke.Thickness = 2
-            end
-        end
-        
-        PlayerBillboards[player] = gui
-    end)
-end
-
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function()
-        if inventoryESPEnabled then
-            task.wait(0.2)
-            createBillboardForPlayer(player)
-        end
-    end)
-end)
-
-Players.PlayerRemoving:Connect(function(player)
-    pcall(function()
-        if PlayerBillboards[player] then
-            PlayerBillboards[player]:Destroy()
-            PlayerBillboards[player] = nil
-        end
-    end)
-end)
-
-task.spawn(function()
-    local items = ReplicatedStorage:WaitForChild("Items", 15)
-    if items then
-        for _, folderName in ipairs({ "gun", "melee", "throwable", "consumable", "farming", "misc", "rod", "fish" }) do
-            local folder = items:FindFirstChild(folderName)
-            if folder then
-                registerItems(folder)
-            end
-        end
-    end
-end)
-
-local function refreshAll()
-    for _, p in ipairs(Players:GetPlayers()) do
-        if inventoryESPEnabled then
-            createBillboardForPlayer(p)
-        else
-            if PlayerBillboards[p] then
-                pcall(function() PlayerBillboards[p]:Destroy() end)
-                PlayerBillboards[p] = nil
-            end
-        end
-    end
-end
-
-PlayerTab:Toggle({
-    Title = "Inventory ESP",
-    Desc = "Shows other players' inventories & weapons.",
-    Value = false,
-
-    Callback = function(estado)
-        inventoryESPEnabled = estado
-        refreshAll()
-        WindUI:Notify({
-            Title = "Inventory ESP",
-            Content = estado and "Inventory ESP ENABLED" or "Inventory ESP DISABLED",
-            Duration = 1.5,
-        })
-    end
-})
-
---==================================================
 -- INFINITE STAMINA
 --==================================================
 
@@ -1285,6 +1296,6 @@ SettingsTab:Paragraph({
 
 WindUI:Notify({
     Title = "Arabe Hub | BlockSpin",
-    Content = "Menu loaded successfully! ✅ (Inventory ESP Included)",
+    Content = "Menu loaded successfully! ✅ (DMX Silent Aim)",
     Duration = 3,
 })
