@@ -1,6 +1,6 @@
---// ARABE HUB (UNIVERSAL SILENT AIM INTEGRATION)
+--// ARABE HUB (CASANOVA SILENT AIM + ESP ITEMS)
 --// WindUI - BlockSpin + Combat + Player Features
---// INTEGRATED: Universal Silent Aim (Averiias, Stefanuk12, xaxa)
+--// INTEGRATED: Casanova Silent Aim con Tracer + ESP Items
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
@@ -12,7 +12,6 @@ local CoreGui = game:GetService("CoreGui")
 local Lighting = game:GetService("Lighting")
 local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
-local HttpService = game:GetService("HttpService")
 
 local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
@@ -135,7 +134,7 @@ GeneralTab:Section({
 
 GeneralTab:Paragraph({
     Title = "Features",
-    Desc = "FOV Rainbow • Distance • Player ESP • FPS Booster • Silent Aim • No Recoil",
+    Desc = "Silent Aim • Distance • Player ESP • Inventory ESP • FPS Booster",
 })
 
 --==================================================
@@ -178,7 +177,7 @@ GeneralTab:Toggle({
                     end
                 end)
             end)
-            WindUI:Notify({ Title = "DMX HUB", Content = "Snap ENABLED", Duration = 1.5 })
+            WindUI:Notify({ Title = "Arabe Hub", Content = "Snap ENABLED", Duration = 1.5 })
         else
             if SnapConnection then SnapConnection:Disconnect() SnapConnection = nil end
             pcall(function()
@@ -190,7 +189,7 @@ GeneralTab:Toggle({
                 end
             end)
             lockedY = nil
-            WindUI:Notify({ Title = "DMX HUB", Content = "Snap DISABLED", Duration = 1.5 })
+            WindUI:Notify({ Title = "Arabe Hub", Content = "Snap DISABLED", Duration = 1.5 })
         end
     end
 })
@@ -302,7 +301,7 @@ GeneralTab:Toggle({
 })
 
 --==================================================
--- COMBAT / UNIVERSAL SILENT AIM
+-- COMBAT / CASANOVA SILENT AIM
 --==================================================
 
 local CombatTab = Window:Tab({
@@ -311,19 +310,17 @@ local CombatTab = Window:Tab({
 })
 
 CombatTab:Section({
-    Title = "Silent Aim (Universal)",
+    Title = "Silent Aim (Casanova)",
 })
 
--- Universal Silent Aim Variables
+-- Casanova Silent Aim Variables
 local SilentAimEnabled = false
 local TeamCheckEnabled = false
 local VisibleCheckEnabled = false
 local TargetPartValue = "Head"
-local SilentAimMethod = "Raycast"
+local SilentAimMethod = "FindPartOnRay"
 local FOVRadius = 130
 local HitChance = 100
-local PredictionEnabled = false
-local PredictionAmount = 0.165
 
 local Mouse = LocalPlayer:GetMouse()
 
@@ -397,7 +394,7 @@ local function getClosestPlayer()
 
         local Distance = (GetMouseLocation() - ScreenPosition).Magnitude
         if Distance <= (DistanceToMouse or FOVRadius or 2000) then
-            Closest = ((TargetPartValue == "Random" and Character[math.random(1, 2) == 1 and "Head" or "HumanoidRootPart"]) or Character[TargetPartValue])
+            Closest = Character:FindFirstChild(TargetPartValue) or Character:FindFirstChild("HumanoidRootPart")
             DistanceToMouse = Distance
         end
     end
@@ -411,7 +408,39 @@ local ExpectedArguments = {
     Raycast = {ArgCountRequired = 3, Args = {"Instance", "Vector3", "Vector3", "RaycastParams"}}
 }
 
--- Hook Universal Silent Aim
+-- Tracer Line Drawing
+local TracerLine = Drawing.new("Line")
+TracerLine.Visible = false
+TracerLine.Thickness = 2
+TracerLine.Color = Color3.fromRGB(255, 0, 0)
+TracerLine.Transparency = 0.7
+
+RunService.RenderStepped:Connect(function()
+    if SilentAimEnabled then
+        local target = getClosestPlayer()
+        if target and LocalPlayer.Character then
+            local myHead = LocalPlayer.Character:FindFirstChild("Head")
+            if myHead then
+                local targetPos, onScreen = Camera:WorldToViewportPoint(target.Position)
+                local myHeadPos, myOnScreen = Camera:WorldToViewportPoint(myHead.Position)
+                
+                if onScreen and myOnScreen then
+                    TracerLine.From = Vector2.new(myHeadPos.X, myHeadPos.Y)
+                    TracerLine.To = Vector2.new(targetPos.X, targetPos.Y)
+                    TracerLine.Visible = true
+                else
+                    TracerLine.Visible = false
+                end
+            end
+        else
+            TracerLine.Visible = false
+        end
+    else
+        TracerLine.Visible = false
+    end
+end)
+
+-- Hook Casanova Silent Aim
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local Method = getnamecallmethod()
@@ -467,29 +496,9 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     return oldNamecall(...)
 end))
 
-local oldIndex = nil 
-oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
-    if self == Mouse and not checkcaller() and SilentAimEnabled and SilentAimMethod == "Mouse.Hit/Target" and getClosestPlayer() then
-        local HitPart = getClosestPlayer()
-         
-        if Index == "Target" or Index == "target" then 
-            return HitPart
-        elseif Index == "Hit" or Index == "hit" then 
-            return ((PredictionEnabled and (HitPart.CFrame + (HitPart.Velocity * PredictionAmount))) or (not PredictionEnabled and HitPart.CFrame))
-        elseif Index == "X" or Index == "x" then 
-            return self.X 
-        elseif Index == "Y" or Index == "y" then 
-            return self.Y 
-        elseif Index == "UnitRay" then 
-            return Ray.new(self.Origin, (self.Hit - self.Origin).Unit)
-        end
-    end
-    return oldIndex(self, Index)
-end))
-
 CombatTab:Toggle({
     Title = "Enable Silent Aim",
-    Desc = "Universal Silent Aim - Multiple Methods",
+    Desc = "Casanova Silent Aim con Tracer",
     Value = false,
 
     Callback = function(Value)
@@ -524,8 +533,8 @@ CombatTab:Toggle({
 
 CombatTab:Dropdown({
     Title = "Target Part",
-    Desc = "Which part to target",
-    Values = {"Head", "HumanoidRootPart", "Random"},
+    Desc = "Head, Chest, Feet",
+    Values = {"Head", "Torso", "LeftFoot"},
     Default = "Head",
 
     Callback = function(Value)
@@ -536,8 +545,8 @@ CombatTab:Dropdown({
 CombatTab:Dropdown({
     Title = "Silent Aim Method",
     Desc = "Choose aiming method",
-    Values = {"Raycast", "FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "Mouse.Hit/Target"},
-    Default = "Raycast",
+    Values = {"Raycast", "FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList"},
+    Default = "FindPartOnRay",
 
     Callback = function(Value)
         SilentAimMethod = Value
@@ -565,92 +574,6 @@ CombatTab:Slider({
         HitChance = Value
     end,
 })
-
-CombatTab:Toggle({
-    Title = "Mouse.Hit Prediction",
-    Desc = "Predict target position",
-    Value = false,
-
-    Callback = function(Value)
-        PredictionEnabled = Value
-    end,
-})
-
-CombatTab:Slider({
-    Title = "Prediction Amount",
-    Min = 0.1,
-    Max = 1,
-    Default = 0.165,
-
-    Callback = function(Value)
-        PredictionAmount = Value
-    end,
-})
-
---==================================================
--- NO RECOIL
---==================================================
-
-CombatTab:Section({
-    Title = "Weapon Options",
-})
-
-local NoRecoilEnabled = false
-
-CombatTab:Toggle({
-    Title = "No Recoil / Spread",
-    Desc = "Removes weapon recoil and spread.",
-    Value = false,
-
-    Callback = function(Value)
-        NoRecoilEnabled = Value
-        WindUI:Notify({
-            Title = "No Recoil",
-            Content = Value and "No Recoil ENABLED" or "No Recoil DISABLED",
-            Duration = 1.5,
-        })
-    end,
-})
-
-task.spawn(function()
-    while true do
-        if NoRecoilEnabled then
-            pcall(function()
-                local char = LocalPlayer.Character
-                local backpack = LocalPlayer:FindFirstChild("Backpack")
-                if char then
-                    for _, tool in ipairs(char:GetChildren()) do
-                        if tool:IsA("Tool") then
-                            for _, v in ipairs(tool:GetDescendants()) do
-                                if (v:IsA("NumberValue") or v:IsA("IntValue")) then
-                                    local name = v.Name:lower()
-                                    if name:find("recoil") or name:find("spread") or name:find("shake") then
-                                        v.Value = 0
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-                if backpack then
-                    for _, tool in ipairs(backpack:GetChildren()) do
-                        if tool:IsA("Tool") then
-                            for _, v in ipairs(tool:GetDescendants()) do
-                                if (v:IsA("NumberValue") or v:IsA("IntValue")) then
-                                    local name = v.Name:lower()
-                                    if name:find("recoil") or name:find("spread") or name:find("shake") then
-                                        v.Value = 0
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-        task.wait(0.5)
-    end
-end)
 
 --==================================================
 -- PLAYER
@@ -956,6 +879,205 @@ end)
 Players.PlayerRemoving:Connect(function(player)
     RemovePlayerESP(player)
 end)
+
+--==================================================
+-- INVENTORY ESP (ITEMS)
+--==================================================
+
+PlayerTab:Section({
+    Title = "Inventory ESP",
+})
+
+local inventoryESPEnabled = false
+local WeaponRegistry = {}
+local PlayerBillboards = {}
+
+local RarityColors = {
+    Common = Color3.fromRGB(180, 180, 180),
+    Uncommon = Color3.fromRGB(0, 255, 0),
+    Rare = Color3.fromRGB(0, 112, 221),
+    Epic = Color3.fromRGB(163, 53, 238),
+    Legendary = Color3.fromRGB(255, 128, 0)
+}
+
+local function registerItems(folder)
+    if not folder then return end
+    pcall(function()
+        for _, tool in ipairs(folder:GetChildren()) do
+            if tool:IsA("Tool") then
+                local handle = tool:FindFirstChild("Handle")
+                local displayName = tool:GetAttribute("DisplayName") or tool.Name
+                local itemId = tool:GetAttribute("ItemId") or tool:GetAttribute("Id") or tool.Name
+                local rarity = tool:GetAttribute("RarityName") or "Common"
+                local imageId = tool:GetAttribute("ImageId") or "rbxassetid://7072725737"
+                local key
+                if handle then
+                    local mesh = handle:FindFirstChildOfClass("SpecialMesh")
+                    if mesh and mesh.MeshId ~= "" then
+                        key = mesh.MeshId .. (mesh.TextureId or "") .. "_RARITY_" .. rarity
+                    elseif handle:IsA("MeshPart") and handle.MeshId ~= "" then
+                        key = handle.MeshId .. (handle.TextureID or "") .. "_RARITY_" .. rarity
+                    end
+                end
+                if not key and itemId and itemId ~= "" and itemId ~= tool.Name then
+                    key = "ITEMID_" .. itemId .. "_RARITY_" .. rarity
+                end
+                if not key then
+                    key = "NAME_" .. displayName .. "_" .. tool.Name .. "_RARITY_" .. rarity
+                end
+                WeaponRegistry[key] = { Name = displayName, Rarity = rarity, ImageId = imageId, ToolName = tool.Name }
+            end
+        end
+    end)
+end
+
+local function getItemKey(tool)
+    local handle = tool:FindFirstChild("Handle")
+    local displayName = tool:GetAttribute("DisplayName") or tool.Name
+    local itemId = tool:GetAttribute("ItemId") or tool:GetAttribute("Id") or tool.Name
+    local rarity = tool:GetAttribute("RarityName") or "Common"
+    if handle then
+        local mesh = handle:FindFirstChildOfClass("SpecialMesh")
+        if mesh and mesh.MeshId ~= "" then return mesh.MeshId .. (mesh.TextureId or "") .. "_RARITY_" .. rarity end
+        if handle:IsA("MeshPart") and handle.MeshId ~= "" then return handle.MeshId .. (handle.TextureID or "") .. "_RARITY_" .. rarity end
+    end
+    if itemId and itemId ~= "" and itemId ~= tool.Name then return "ITEMID_" .. itemId .. "_RARITY_" .. rarity end
+    return "NAME_" .. displayName .. "_" .. tool.Name .. "_RARITY_" .. rarity
+end
+
+local function getWeaponInfo(tool)
+    if not tool or not tool:IsA("Tool") then return nil end
+    return WeaponRegistry[getItemKey(tool)]
+end
+
+local function createBillboardForPlayer(player)
+    if not inventoryESPEnabled then return end
+    if player == LocalPlayer then return end
+    local char = player.Character
+    if not char then return end
+    local head = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+    if not head then return end
+    if PlayerBillboards[player] then
+        pcall(function() PlayerBillboards[player]:Destroy() end)
+        PlayerBillboards[player] = nil
+    end
+    
+    pcall(function()
+        local gui = Instance.new("BillboardGui")
+        gui.Name = "DMX_ESP"
+        gui.Adornee = head
+        gui.Size = UDim2.new(0, 140, 0, 45)
+        gui.StudsOffset = Vector3.new(0, 2.5, 0)
+        gui.AlwaysOnTop = true
+        gui.Parent = char
+        
+        local layout = Instance.new("UIListLayout", gui)
+        layout.FillDirection = Enum.FillDirection.Vertical
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Padding = UDim.new(0, 4)
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        
+        local toolsContainer = Instance.new("Frame", gui)
+        toolsContainer.Size = UDim2.new(1, 0, 0, 20)
+        toolsContainer.BackgroundTransparency = 1
+        toolsContainer.LayoutOrder = 1
+        
+        local hLayout = Instance.new("UIListLayout", toolsContainer)
+        hLayout.FillDirection = Enum.FillDirection.Horizontal
+        hLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        hLayout.Padding = UDim.new(0, 5)
+        hLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        
+        local tools = {}
+        for _, bag in ipairs({ "Backpack", "StarterGear", "StarterPack" }) do
+            local b = player:FindFirstChild(bag)
+            if b then
+                for _, t in ipairs(b:GetChildren()) do
+                    if t:IsA("Tool") and t.Name ~= "Fists" then table.insert(tools, t) end
+                end
+            end
+        end
+        for _, t in ipairs(char:GetChildren()) do
+            if t:IsA("Tool") and t.Name ~= "Fists" then table.insert(tools, t) end
+        end
+        
+        for _, tool in ipairs(tools) do
+            local info = getWeaponInfo(tool)
+            if info then
+                local img = Instance.new("ImageLabel", toolsContainer)
+                img.Size = UDim2.new(0, 20, 0, 20)
+                img.BackgroundTransparency = 0.1
+                img.Image = info.ImageId
+                img.BackgroundColor3 = Color3.fromRGB(240, 248, 255)
+                Instance.new("UICorner", img).CornerRadius = UDim.new(0, 10)
+                local stroke = Instance.new("UIStroke", img)
+                stroke.Color = RarityColors[info.Rarity] or Color3.new(1, 1, 1)
+                stroke.Thickness = 2
+            end
+        end
+        
+        PlayerBillboards[player] = gui
+    end)
+end
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        if inventoryESPEnabled then
+            task.wait(0.2)
+            createBillboardForPlayer(player)
+        end
+    end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    pcall(function()
+        if PlayerBillboards[player] then
+            PlayerBillboards[player]:Destroy()
+            PlayerBillboards[player] = nil
+        end
+    end)
+end)
+
+task.spawn(function()
+    local items = ReplicatedStorage:WaitForChild("Items", 15)
+    if items then
+        for _, folderName in ipairs({ "gun", "melee", "throwable", "consumable", "farming", "misc", "rod", "fish" }) do
+            local folder = items:FindFirstChild(folderName)
+            if folder then
+                registerItems(folder)
+            end
+        end
+    end
+end)
+
+local function refreshAll()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if inventoryESPEnabled then
+            createBillboardForPlayer(p)
+        else
+            if PlayerBillboards[p] then
+                pcall(function() PlayerBillboards[p]:Destroy() end)
+                PlayerBillboards[p] = nil
+            end
+        end
+    end
+end
+
+PlayerTab:Toggle({
+    Title = "Inventory ESP",
+    Desc = "Shows other players' inventories & weapons.",
+    Value = false,
+
+    Callback = function(estado)
+        inventoryESPEnabled = estado
+        refreshAll()
+        WindUI:Notify({
+            Title = "Inventory ESP",
+            Content = estado and "Inventory ESP ENABLED" or "Inventory ESP DISABLED",
+            Duration = 1.5,
+        })
+    end
+})
 
 --==================================================
 -- INFINITE STAMINA
@@ -1286,6 +1408,6 @@ SettingsTab:Paragraph({
 
 WindUI:Notify({
     Title = "Arabe Hub | BlockSpin",
-    Content = "Menu loaded successfully! ✅ (Universal Silent Aim)",
+    Content = "Menu loaded successfully! ✅ (Casanova Silent Aim + ESP)",
     Duration = 3,
 })
