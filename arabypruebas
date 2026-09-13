@@ -1,6 +1,6 @@
---// ARABE HUB (DMX INTEGRATION - SILENT AIM FUNCIONAL)
+--// ARABE HUB (UNIVERSAL SILENT AIM INTEGRATION)
 --// WindUI - BlockSpin + Combat + Player Features
---// INTEGRATED: Silent Aim from DMX HUB (WORKING)
+--// INTEGRATED: Universal Silent Aim (Averiias, Stefanuk12, xaxa)
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
@@ -11,6 +11,8 @@ local Camera = Workspace.CurrentCamera
 local CoreGui = game:GetService("CoreGui")
 local Lighting = game:GetService("Lighting")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
+local HttpService = game:GetService("HttpService")
 
 local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
@@ -300,7 +302,7 @@ GeneralTab:Toggle({
 })
 
 --==================================================
--- COMBAT / FOV + SILENT AIM (DMX)
+-- COMBAT / UNIVERSAL SILENT AIM
 --==================================================
 
 local CombatTab = Window:Tab({
@@ -309,282 +311,185 @@ local CombatTab = Window:Tab({
 })
 
 CombatTab:Section({
-    Title = "FOV Rainbow",
+    Title = "Silent Aim (Universal)",
 })
 
-local FOVPercent = 50
-local FOVEnabled = false
-
-local fovLines = {}
-local numLines = 16
-
-pcall(function()
-    if Drawing and Drawing.new then
-        for i = 1, numLines do
-            local line = Drawing.new("Line")
-            line.Visible = false
-            line.Thickness = 2
-            table.insert(fovLines, line)
-        end
-    end
-end)
-
-local function UpdateFOVDrawing()
-    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    local fovRadius = 50 + (FOVPercent * 4.5)
-    
-    if FOVEnabled and #fovLines > 0 then
-        pcall(function()
-            local timeVal = tick() * 0.6
-            for i, line in ipairs(fovLines) do
-                local angle1 = math.rad((i - 1) * (360 / numLines))
-                local angle2 = math.rad(i * (360 / numLines))
-                
-                local p1 = center + Vector2.new(math.cos(angle1), math.sin(angle1)) * fovRadius
-                local p2 = center + Vector2.new(math.cos(angle2), math.sin(angle2)) * fovRadius
-                
-                line.From = p1
-                line.To = p2
-                
-                local hue = (timeVal + (i / numLines)) % 1
-                line.Color = Color3.fromHSV(hue, 1, 1)
-                line.Visible = true
-            end
-        end)
-    else
-        for _, line in ipairs(fovLines) do
-            line.Visible = false
-        end
-    end
-end
-
-RunService.RenderStepped:Connect(function()
-    UpdateFOVDrawing()
-end)
-
-CombatTab:Toggle({
-    Title = "Enable Rainbow FOV",
-    Desc = "Displays a rainbow FOV circle.",
-    Value = false,
-
-    Callback = function(Value)
-        FOVEnabled = Value
-    end,
-})
-
-CombatTab:Slider({
-    Title = "FOV Radius",
-    Desc = "Circle size.",
-    Step = 5,
-
-    Value = {
-        Min = 30,
-        Max = 300,
-        Default = 120,
-    },
-
-    Callback = function(Value)
-        FOVPercent = (Value - 30) / 270 * 100
-    end,
-})
-
---==================================================
--- SILENT AIM (DMX VERSION - WORKING)
---==================================================
-
-CombatTab:Section({
-    Title = "Silent Aim & Wallbang",
-})
-
+-- Universal Silent Aim Variables
 local SilentAimEnabled = false
-local CurrentLockedTarget = nil
-local RaycastParamsCache = RaycastParams.new()
-RaycastParamsCache.FilterType = Enum.RaycastFilterType.Exclude
-RaycastParamsCache.IgnoreWater = true
+local TeamCheckEnabled = false
+local VisibleCheckEnabled = false
+local TargetPartValue = "Head"
+local SilentAimMethod = "Raycast"
+local FOVRadius = 130
+local HitChance = 100
+local PredictionEnabled = false
+local PredictionAmount = 0.165
 
-local function isInCarOrVehicle(char, targetPart)
-    if not char then return false end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum and hum.SeatPart then return true end
-    local parent = char.Parent
-    while parent and parent ~= Workspace do
-        local pName = parent.Name:lower()
-        if pName:find("vehicle") or pName:find("car") or pName:find("auto") or pName:find("bike") then
-            return true
-        end
-        parent = parent.Parent
-    end
-    return false
+local Mouse = LocalPlayer:GetMouse()
+
+local function CalculateChance(Percentage)
+    Percentage = math.floor(Percentage)
+    local chance = math.floor(math.random(0, 100)) / 100
+    return chance <= Percentage / 100
 end
 
-local function isTargetVisibleOrInCar(targetPart)
-    local char = LocalPlayer.Character
-    local targetChar = targetPart and targetPart.Parent
-    local head = char and char:FindFirstChild("Head")
-    if not head or not targetPart or not targetChar then return false end
+local function GetMouseLocation()
+    return UserInputService:GetMouseLocation()
+end
 
-    if isInCarOrVehicle(targetChar, targetPart) then
-        return true
-    end
+local function WorldToScreen(Vector)
+    local Vec3, OnScreen = Camera:WorldToScreenPoint(Vector)
+    return Vector2.new(Vec3.X, Vec3.Y), OnScreen
+end
 
-    local origin = head.Position
-    local targetPos = targetPart.Position
-    local direction = targetPos - origin
-
-    RaycastParamsCache.FilterDescendantsInstances = {char, targetChar}
-    local result = Workspace:Raycast(origin, direction, RaycastParamsCache)
-
-    if not result then
-        return true
-    else
-        local hitPart = result.Instance
-        if hitPart then
-            local material = hitPart.Material
-            local name = hitPart.Name:lower()
-            if material == Enum.Material.Glass or name:find("glass") or name:find("window") then
-                RaycastParamsCache.FilterDescendantsInstances = {char, targetChar, hitPart}
-                local secondResult = Workspace:Raycast(result.Position + (direction.Unit * 0.5), targetPos - (result.Position + (direction.Unit * 0.5)), RaycastParamsCache)
-                if not secondResult then return true end
-            end
-        end
+local function ValidateArguments(Args, RayMethod)
+    local Matches = 0
+    if #Args < RayMethod.ArgCountRequired then
         return false
     end
-end
-
-local VelocityCache = {}
-
-RunService.Heartbeat:Connect(function()
-    pcall(function()
-        for _, pl in ipairs(Players:GetPlayers()) do
-            if pl ~= LocalPlayer and pl.Character then
-                local root = pl.Character:FindFirstChild("HumanoidRootPart")
-                local hum = pl.Character:FindFirstChild("Humanoid")
-                if root and hum and hum.Health > 0 then
-                    VelocityCache[pl] = VelocityCache[pl] or {}
-                    table.insert(VelocityCache[pl], {time = os.clock(), pos = root.Position})
-                    if #VelocityCache[pl] > 8 then table.remove(VelocityCache[pl], 1) end
-                else
-                    VelocityCache[pl] = nil
-                end
-            end
-        end
-    end)
-end)
-
-local function getCalculatedVelocity(pl, rootPart)
-    if rootPart and rootPart.AssemblyLinearVelocity.Magnitude > 22 then
-        return rootPart.AssemblyLinearVelocity
-    end
-    local data = VelocityCache[pl]
-    if not data or #data < 2 then return Vector3.zero end
-    local vel = Vector3.zero
-    local count = 0
-    for i = 2, #data do
-        local dt = data[i].time - data[i - 1].time
-        if dt > 0 then
-            vel = vel + (data[i].pos - data[i - 1].pos) / dt
-            count = count + 1
+    for Pos, Argument in next, Args do
+        if typeof(Argument) == RayMethod.Args[Pos] then
+            Matches = Matches + 1
         end
     end
-    return count > 0 and (vel / count) or Vector3.zero
+    return Matches >= RayMethod.ArgCountRequired
 end
 
-local function getPing()
-    pcall(function()
-        local pGui = LocalPlayer:FindFirstChild("PlayerGui")
-        if pGui and pGui:FindFirstChild("NetworkStats") and pGui.NetworkStats:FindFirstChild("PingLabel") then
-            local ms = tonumber(pGui.NetworkStats.PingLabel.Text:match("%d+"))
-            if ms then return math.clamp(ms / 1000, 0.04, 1.2) end
-        end
-    end)
-    return 0.08
+local function getDirection(Origin, Position)
+    return (Position - Origin).Unit * 1000
 end
 
-local function predictTargetPos(targetPart)
-    if not targetPart then return Vector3.zero end
-    local character = targetPart.Parent
-    local pl = character and Players:GetPlayerFromCharacter(character)
-    if not pl then return targetPart.Position end
-    local vel = getCalculatedVelocity(pl, character:FindFirstChild("HumanoidRootPart"))
-    local ping = getPing()
-    return targetPart.Position + (vel * (ping + 0.15) * 1.5)
-end
-
-local function getClosestPlayerInFOV()
-    local bestTarget = nil
-    local shortestDist = 999999
-    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    local fovRadius = 50 + (FOVPercent * 4.5)
+local function IsPlayerVisible(Player)
+    local PlayerCharacter = Player.Character
+    local LocalPlayerCharacter = LocalPlayer.Character
     
-    for _, pl in ipairs(Players:GetPlayers()) do
-        if pl ~= LocalPlayer and pl.Character then
-            local char = pl.Character
-            local head = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
-            local hum = char:FindFirstChild("Humanoid")
-            if head and hum and hum.Health > 0 then
-                if isTargetVisibleOrInCar(head) then
-                    local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
-                    if onScreen and screenPos.Z > 0 then
-                        local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-                        if screenDist <= fovRadius and screenDist < shortestDist then
-                            shortestDist = screenDist
-                            bestTarget = pl
-                        end
-                    end
+    if not (PlayerCharacter or LocalPlayerCharacter) then return end 
+    
+    local PlayerRoot = PlayerCharacter:FindFirstChild(TargetPartValue) or PlayerCharacter:FindFirstChild("HumanoidRootPart")
+    
+    if not PlayerRoot then return end 
+    
+    local CastPoints, IgnoreList = {PlayerRoot.Position, LocalPlayerCharacter, PlayerCharacter}, {LocalPlayerCharacter, PlayerCharacter}
+    local ObscuringObjects = #Camera:GetPartsObscuringTarget(CastPoints, IgnoreList)
+    
+    return ((ObscuringObjects == 0 and true) or (ObscuringObjects > 0 and false))
+end
+
+local function getClosestPlayer()
+    if not TargetPartValue then return end
+    local Closest
+    local DistanceToMouse
+    for _, Player in ipairs(Players:GetPlayers()) do
+        if Player == LocalPlayer then continue end
+        if TeamCheckEnabled and Player.Team == LocalPlayer.Team then continue end
+
+        local Character = Player.Character
+        if not Character then continue end
+        
+        if VisibleCheckEnabled and not IsPlayerVisible(Player) then continue end
+
+        local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+        local Humanoid = Character:FindFirstChild("Humanoid")
+        if not HumanoidRootPart or not Humanoid or Humanoid and Humanoid.Health <= 0 then continue end
+
+        local ScreenPosition, OnScreen = WorldToScreen(HumanoidRootPart.Position)
+        if not OnScreen then continue end
+
+        local Distance = (GetMouseLocation() - ScreenPosition).Magnitude
+        if Distance <= (DistanceToMouse or FOVRadius or 2000) then
+            Closest = ((TargetPartValue == "Random" and Character[math.random(1, 2) == 1 and "Head" or "HumanoidRootPart"]) or Character[TargetPartValue])
+            DistanceToMouse = Distance
+        end
+    end
+    return Closest
+end
+
+local ExpectedArguments = {
+    FindPartOnRayWithIgnoreList = {ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean", "boolean"}},
+    FindPartOnRayWithWhitelist = {ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean"}},
+    FindPartOnRay = {ArgCountRequired = 2, Args = {"Instance", "Ray", "Instance", "boolean", "boolean"}},
+    Raycast = {ArgCountRequired = 3, Args = {"Instance", "Vector3", "Vector3", "RaycastParams"}}
+}
+
+-- Hook Universal Silent Aim
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
+    local Method = getnamecallmethod()
+    local Arguments = {...}
+    local self = Arguments[1]
+    local chance = CalculateChance(HitChance)
+    
+    if SilentAimEnabled and self == Workspace and not checkcaller() and chance == true then
+        if Method == "FindPartOnRayWithIgnoreList" and SilentAimMethod == Method then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then
+                local A_Ray = Arguments[2]
+                local HitPart = getClosestPlayer()
+                if HitPart then
+                    local Origin = A_Ray.Origin
+                    local Direction = getDirection(Origin, HitPart.Position)
+                    Arguments[2] = Ray.new(Origin, Direction)
+                    return oldNamecall(unpack(Arguments))
+                end
+            end
+        elseif Method == "FindPartOnRayWithWhitelist" and SilentAimMethod == Method then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then
+                local A_Ray = Arguments[2]
+                local HitPart = getClosestPlayer()
+                if HitPart then
+                    local Origin = A_Ray.Origin
+                    local Direction = getDirection(Origin, HitPart.Position)
+                    Arguments[2] = Ray.new(Origin, Direction)
+                    return oldNamecall(unpack(Arguments))
+                end
+            end
+        elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and SilentAimMethod:lower() == Method:lower() then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then
+                local A_Ray = Arguments[2]
+                local HitPart = getClosestPlayer()
+                if HitPart then
+                    local Origin = A_Ray.Origin
+                    local Direction = getDirection(Origin, HitPart.Position)
+                    Arguments[2] = Ray.new(Origin, Direction)
+                    return oldNamecall(unpack(Arguments))
+                end
+            end
+        elseif Method == "Raycast" and SilentAimMethod == Method then
+            if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
+                local A_Origin = Arguments[2]
+                local HitPart = getClosestPlayer()
+                if HitPart then
+                    Arguments[3] = getDirection(A_Origin, HitPart.Position)
+                    return oldNamecall(unpack(Arguments))
                 end
             end
         end
     end
-    return bestTarget
-end
+    return oldNamecall(...)
+end))
 
--- DMX HOOK - DIRECT IMPLEMENTATION
-local RemoteFolder = ReplicatedStorage:FindFirstChild("Remotes")
-local SendRemote = RemoteFolder and RemoteFolder:FindFirstChild("Send")
-
-if SendRemote and hookfunction then
-    local originalFireServer = SendRemote.FireServer
-    
-    hookfunction(originalFireServer, function(self, ...)
-        if self ~= SendRemote then return originalFireServer(self, ...) end
-        
-        local args = {...}
-        
-        if SilentAimEnabled and args[2] == "shoot_gun" and CurrentLockedTarget then
-            local targetChar = CurrentLockedTarget.Character
-            if targetChar then
-                local hitPart = targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart")
-                local myHead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head")
-                
-                if hitPart and myHead and isTargetVisibleOrInCar(hitPart) then
-                    local predPos = predictTargetPos(hitPart)
-                    local startOrigin = myHead.Position
-                    
-                    args[4] = CFrame.new(startOrigin, predPos)
-                    args[5] = {
-                        [1] = {
-                            [1] = {
-                                Instance = hitPart,
-                                Normal = Vector3.new(0, 1, 0),
-                                Position = predPos
-                            }
-                        }
-                    }
-                end
-            end
+local oldIndex = nil 
+oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
+    if self == Mouse and not checkcaller() and SilentAimEnabled and SilentAimMethod == "Mouse.Hit/Target" and getClosestPlayer() then
+        local HitPart = getClosestPlayer()
+         
+        if Index == "Target" or Index == "target" then 
+            return HitPart
+        elseif Index == "Hit" or Index == "hit" then 
+            return ((PredictionEnabled and (HitPart.CFrame + (HitPart.Velocity * PredictionAmount))) or (not PredictionEnabled and HitPart.CFrame))
+        elseif Index == "X" or Index == "x" then 
+            return self.X 
+        elseif Index == "Y" or Index == "y" then 
+            return self.Y 
+        elseif Index == "UnitRay" then 
+            return Ray.new(self.Origin, (self.Hit - self.Origin).Unit)
         end
-        
-        return originalFireServer(self, unpack(args))
-    end)
-end
-
-RunService.RenderStepped:Connect(function()
-    CurrentLockedTarget = SilentAimEnabled and getClosestPlayerInFOV() or nil
-end)
+    end
+    return oldIndex(self, Index)
+end))
 
 CombatTab:Toggle({
     Title = "Enable Silent Aim",
-    Desc = "Automatic aiming with movement prediction.",
+    Desc = "Universal Silent Aim - Multiple Methods",
     Value = false,
 
     Callback = function(Value)
@@ -594,6 +499,91 @@ CombatTab:Toggle({
             Content = Value and "Silent Aim ENABLED" or "Silent Aim DISABLED",
             Duration = 1.5,
         })
+    end,
+})
+
+CombatTab:Toggle({
+    Title = "Team Check",
+    Desc = "Ignore team members",
+    Value = false,
+
+    Callback = function(Value)
+        TeamCheckEnabled = Value
+    end,
+})
+
+CombatTab:Toggle({
+    Title = "Visible Check",
+    Desc = "Only target visible players",
+    Value = false,
+
+    Callback = function(Value)
+        VisibleCheckEnabled = Value
+    end,
+})
+
+CombatTab:Dropdown({
+    Title = "Target Part",
+    Desc = "Which part to target",
+    Values = {"Head", "HumanoidRootPart", "Random"},
+    Default = "Head",
+
+    Callback = function(Value)
+        TargetPartValue = Value
+    end,
+})
+
+CombatTab:Dropdown({
+    Title = "Silent Aim Method",
+    Desc = "Choose aiming method",
+    Values = {"Raycast", "FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "Mouse.Hit/Target"},
+    Default = "Raycast",
+
+    Callback = function(Value)
+        SilentAimMethod = Value
+    end,
+})
+
+CombatTab:Slider({
+    Title = "FOV Radius",
+    Min = 30,
+    Max = 360,
+    Default = 130,
+
+    Callback = function(Value)
+        FOVRadius = Value
+    end,
+})
+
+CombatTab:Slider({
+    Title = "Hit Chance (%)",
+    Min = 0,
+    Max = 100,
+    Default = 100,
+
+    Callback = function(Value)
+        HitChance = Value
+    end,
+})
+
+CombatTab:Toggle({
+    Title = "Mouse.Hit Prediction",
+    Desc = "Predict target position",
+    Value = false,
+
+    Callback = function(Value)
+        PredictionEnabled = Value
+    end,
+})
+
+CombatTab:Slider({
+    Title = "Prediction Amount",
+    Min = 0.1,
+    Max = 1,
+    Default = 0.165,
+
+    Callback = function(Value)
+        PredictionAmount = Value
     end,
 })
 
@@ -1296,6 +1286,6 @@ SettingsTab:Paragraph({
 
 WindUI:Notify({
     Title = "Arabe Hub | BlockSpin",
-    Content = "Menu loaded successfully! ✅ (DMX Silent Aim)",
+    Content = "Menu loaded successfully! ✅ (Universal Silent Aim)",
     Duration = 3,
 })
